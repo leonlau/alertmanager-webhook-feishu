@@ -2,18 +2,19 @@ package feishu
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"strings"
+	"text/template"
+	"time"
+
 	"github.com/icza/gox/stringsx"
 	"github.com/sirupsen/logrus"
 	"github.com/xujiahua/alertmanager-webhook-feishu/config"
 	"github.com/xujiahua/alertmanager-webhook-feishu/feishu/rotate"
 	"github.com/xujiahua/alertmanager-webhook-feishu/model"
 	"github.com/xujiahua/alertmanager-webhook-feishu/tmpl"
-	"strings"
-	"text/template"
-	"time"
 )
 
 type Bot struct {
@@ -27,9 +28,8 @@ type Bot struct {
 	metadata    map[string]string
 }
 
-func New(bot *config.Bot, helper *EmailHelper) (*Bot, error) {
-	// @xxx
-	openIDs, err := getOpenIDs(bot.Mention, helper)
+func New(bot *config.Bot) (*Bot, error) {
+	openIDs, err := getOpenIDs(bot.Mention)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func New(bot *config.Bot, helper *EmailHelper) (*Bot, error) {
 		webhook:     bot.Webhook,
 		rotator:     rotator,
 		openIDs:     openIDs,
-		sdk:         NewSDK("", ""),
+		sdk:         NewSDK(),
 		tpl:         tpl,
 		alertTpl:    alertTpl,
 		titlePrefix: bot.TitlePrefix,
@@ -60,27 +60,16 @@ func New(bot *config.Bot, helper *EmailHelper) (*Bot, error) {
 	}, nil
 }
 
-func getOpenIDs(mention *config.Mention, helper *EmailHelper) ([]string, error) {
+// getOpenIDs resolves mention targets.
+// Use `mention.open_ids` (or `mention.all: true`) to address users.
+func getOpenIDs(mention *config.Mention) ([]string, error) {
 	if mention == nil {
 		return nil, nil
 	}
 	if mention.All {
 		return []string{"all"}, nil
 	}
-
-	openIDs := mention.OpenIDs
-	emails := mention.Emails
-	if len(emails) != 0 && helper == nil {
-		return nil, errors.New("@somebody by email need email flag enabled")
-	}
-	if len(emails) != 0 {
-		remaining, err := helper.Lookup(emails)
-		if err != nil {
-			return nil, err
-		}
-		openIDs = append(openIDs, remaining...)
-	}
-	return openIDs, nil
+	return mention.OpenIDs, nil
 }
 
 func getTemplates(tmplConf *config.Template) (*template.Template, *template.Template, error) {
@@ -106,7 +95,7 @@ func getTemplates(tmplConf *config.Template) (*template.Template, *template.Temp
 	return dt, dat, nil
 }
 
-func (b Bot) Send(alerts *model.WebhookMessage) error {
+func (b Bot) Send(ctx context.Context, alerts *model.WebhookMessage) error {
 	// attach @xxx
 	if b.rotator != nil {
 		alerts.OpenIDs = b.rotator.Rotate(time.Now())
@@ -132,30 +121,35 @@ func (b Bot) Send(alerts *model.WebhookMessage) error {
 	}
 	if logrus.IsLevelEnabled(logrus.DebugLevel) {
 		if d, err := beautifyJSON(buf.String()); err != nil {
-			logrus.Error(err)
-			fmt.Println(buf.String())
+			logrus.WithError(err).Debug("beautify rendered card failed; dumping raw body")
+			logrus.Debug(buf.String())
 		} else {
-			fmt.Println(d)
+			logrus.Debug(d)
 		}
 	}
 
-	return b.sdk.WebhookV2(b.webhook, &buf)
+	return b.sdk.WebhookV2(ctx, b.webhook, &buf)
 }
 
-// right is immutable
+// mergeMap 返回一个新 map：left 中已有的 key 保持不变，right 中仅补充 left 没有的 key。
+// 不修改入参 map，避免对调用方共享状态的隐式耦合（splitByStatus 多迭代
+// 或将来并发扩展时尤其重要）。
+// 语义：left 优先（与历史行为一致），right 用于补缺。
+// 特殊：两个 nil 都传 → 返回 nil（保持历史行为）。
 func mergeMap(left, right map[string]string) map[string]string {
-	if len(right) == 0 {
-		return left
+	if left == nil && right == nil {
+		return nil
 	}
-	if left == nil {
-		left = make(map[string]string)
+	out := make(map[string]string, len(left)+len(right))
+	for k, v := range left {
+		out[k] = v
 	}
 	for k, v := range right {
-		if _, ok := left[k]; !ok {
-			left[k] = v
+		if _, ok := out[k]; !ok {
+			out[k] = v
 		}
 	}
-	return left
+	return out
 }
 
 // field description may contain double quote, non printable chars

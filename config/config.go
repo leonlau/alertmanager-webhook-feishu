@@ -1,13 +1,17 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"strings"
+
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
 )
 
 type Mention struct {
 	All      bool     `yaml:"all"`
-	Emails   []string `yaml:"emails"`
 	OpenIDs  []string `yaml:"open_ids"`
 	Rotation string   `yaml:"rotation"`
 }
@@ -28,19 +32,13 @@ type Bot struct {
 	MetaData    map[string]string `yaml:"metadata"`
 }
 
-type App struct {
-	ID     string `yaml:"id"`
-	Secret string `yaml:"secret"`
-}
-
 type Config struct {
 	Bots map[string]*Bot `yaml:"bots"`
-	App  *App            `yaml:"app"`
 }
 
 func Load(filename string) (*Config, error) {
 	var conf Config
-	bs, err := ioutil.ReadFile(filename)
+	bs, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -50,5 +48,41 @@ func Load(filename string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := conf.Validate(); err != nil {
+		return nil, err
+	}
+
 	return &conf, nil
+}
+
+// Validate 检查配置合法性：webhook URL 必须为 https 且 host 非空。
+// 启动时尽早失败，避免运行时才暴露。
+func (c *Config) Validate() error {
+	if len(c.Bots) == 0 {
+		return errors.New("no bots configured")
+	}
+	for name, bot := range c.Bots {
+		if err := validateWebhook(bot.Webhook); err != nil {
+			return fmt.Errorf("bot %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateWebhook(raw string) error {
+	if raw == "" {
+		return errors.New("empty webhook url")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid webhook url: %w", err)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("webhook url missing host: %q", raw)
+	}
+	// 飞书 webhook 要求 https
+	if !strings.EqualFold(u.Scheme, "https") {
+		return fmt.Errorf("webhook url must use https, got %q", u.Scheme)
+	}
+	return nil
 }
