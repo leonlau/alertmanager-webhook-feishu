@@ -1,7 +1,11 @@
 package feishu
 
-import "github.com/xujiahua/alertmanager-webhook-feishu/model"
+import (
+	"context"
+
+	"github.com/xujiahua/alertmanager-webhook-feishu/model"
+)
 
 type IBot interface {
-	Send(*model.WebhookMessage) error
+	Send(context.Context, *model.WebhookMessage) error
 }

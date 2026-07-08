@@ -50,6 +50,10 @@ func TestEveryN(t *testing.T) {
 }
 
 func TestMentionRotator_Rotate(t *testing.T) {
+	// use a fixed baseDate to avoid flakiness from time.Now() being captured
+	// twice in the table and drifting by sub-day units.
+	baseDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
 	type fields struct {
 		BaseDate  time.Time
 		CycleDays int
@@ -66,45 +70,45 @@ func TestMentionRotator_Rotate(t *testing.T) {
 	}{
 		{
 			fields: fields{
-				BaseDate:  time.Now(),
+				BaseDate:  baseDate,
 				CycleDays: 14,
 				OpenIDs:   []string{"a", "b"},
 			},
 			args: args{
-				t: time.Now(),
+				t: baseDate,
 			},
 			want: []string{"a"},
 		},
 		{
 			fields: fields{
-				BaseDate:  time.Now(),
+				BaseDate:  baseDate,
 				CycleDays: 14,
 				OpenIDs:   []string{"a", "b"},
 			},
 			args: args{
-				t: time.Now().AddDate(0, 0, 13),
+				t: baseDate.AddDate(0, 0, 13),
 			},
 			want: []string{"a"},
 		},
 		{
 			fields: fields{
-				BaseDate:  time.Now(),
+				BaseDate:  baseDate,
 				CycleDays: 14,
 				OpenIDs:   []string{"a", "b"},
 			},
 			args: args{
-				t: time.Now().AddDate(0, 0, 14),
+				t: baseDate.AddDate(0, 0, 14),
 			},
 			want: []string{"b"},
 		},
 		{
 			fields: fields{
-				BaseDate:  time.Now(),
+				BaseDate:  baseDate,
 				CycleDays: 14,
 				OpenIDs:   []string{"a", "b"},
 			},
 			args: args{
-				t: time.Now().AddDate(0, 0, -1),
+				t: baseDate.AddDate(0, 0, -1),
 			},
 			want: []string{"b"},
 		},

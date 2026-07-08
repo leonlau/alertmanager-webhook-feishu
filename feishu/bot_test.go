@@ -1,20 +1,26 @@
 package feishu
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/xujiahua/alertmanager-webhook-feishu/config"
 	"github.com/xujiahua/alertmanager-webhook-feishu/model"
-	"reflect"
 	"testing"
 	"time"
 )
 
 func getConf() *config.Config {
-	conf, err := config.Load("../config.yml")
+	conf, err := config.Load("../config.example.yml")
 	if err != nil {
 		panic(err)
 	}
@@ -31,26 +37,40 @@ func getBotConf() *config.Bot {
 	panic("expect at least one")
 }
 
-func getAppConf() *config.App {
-	return getConf().App
-}
-
 func TestBot_Send(t *testing.T) {
+	// 临时把日志级别调到 debug；用 t.Cleanup 恢复，避免污染其他测试
+	prevLevel := logrus.GetLevel()
 	logrus.SetLevel(logrus.DebugLevel)
-	bot, err := New(getBotConf(), nil)
+	t.Cleanup(func() { logrus.SetLevel(prevLevel) })
+
+	bot, err := New(getBotConf())
 	require.Nil(t, err)
 	bot.openIDs = []string{"ou_177f84317c6ee52630edf335d5f8a6fc", "ou_177f84317c6ee52630edf335d5f8a6fc"}
 	bot.titlePrefix = "[SHANGHAI]"
 	bot.metadata = map[string]string{
 		"链接": "https://www.baidu.com",
 	}
+
+	// Replace the real feishu webhook with an in-process fake so the test
+	// doesn't depend on a valid webhook token.
+	var received []byte
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"StatusCode":0,"StatusMessage":"success"}`)
+	}))
+	defer fake.Close()
+	bot.webhook = fake.URL
+
 	alerts := model.WebhookMessage{
 		Data: newAlerts(),
 		Meta: map[string]string{"group": "hello", "url": "www.baidu.com"},
 	}
-	err = bot.Send(&alerts)
+	err = bot.Send(context.Background(), &alerts)
 	spew.Dump(err)
 	require.Nil(t, err)
+	require.NotEmpty(t, received, "fake feishu server should have received the payload")
 }
 
 // copyright: https://github.com/tomtom-international/alertmanager-webhook-logger/blob/master/main_test.go#L132

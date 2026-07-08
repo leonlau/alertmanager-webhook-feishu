@@ -42,7 +42,6 @@ Usage:
 
 Flags:
   -c, --config string   config file for bot webhook
-  -e, --email           if email supported, need feishu appid/secret for enabling
   -h, --help            help for server
   -p, --port int        server port (default 8000)
 
@@ -65,17 +64,7 @@ Global Flags:
 - [x] 自定义飞书模板
 - [x] @所有人 支持
 - [x] @某人 支持 open_id
-- [x] @某人 支持 email  @20210729 [官方没有直接支持](https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN#4996824a) ，我们可以申请一个飞书应用，通过 email 获取 open_id。
 - [ ] Prometheus 指标
-
-### open_id 获取方式
-
-[open_id](https://open.feishu.cn/document/home/user-identity-introduction/open-id) 理论上用于标识一个 User ID 在具体某一应用中的身份。但是经过实践发现，随便某个应用下的 open_id 可以用于自定义机器人 @某人。很奇怪的设计。
-
-目前，为了能通过 email 得到 open_id，需要创建飞书「企业自建应用」。需要注意如下两点：
-
-1. 应用可用性：可用成员为「全部成员」。
-2. 最小权限：「通过手机号或邮箱获取用户 ID」。
 
 ### 飞书消息模板
 
