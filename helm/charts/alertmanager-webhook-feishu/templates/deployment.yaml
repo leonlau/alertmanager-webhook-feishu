@@ -5,9 +5,7 @@ metadata:
   labels:
     {{- include "alertmanager-webhook-feishu.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "alertmanager-webhook-feishu.selectorLabels" . | nindent 6 }}
@@ -40,7 +38,6 @@ spec:
           args:
             - "server"
             - "--config=/etc/alertmanager-webhook-feishu/config.yml"
-            - "--email"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: TZ
